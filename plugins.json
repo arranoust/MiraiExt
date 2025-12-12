@@ -1,0 +1,45 @@
+[
+    {
+        "iconUrl": "https://aghanim.xyz/wp-content/themes/animesail/assets/images/ico.png",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/arranoust/MiraiExt",
+        "fileSize": 14145,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "Hexated",
+            "arranoust"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 5,
+        "internalName": "AnimeSailProvider",
+        "description": "AnimeSail \u2013 Streaming Download Anime Subtitle Indonesia",
+        "url": "https://raw.githubusercontent.com/arranoust/MiraiExt/builds/AnimeSailProvider.cs3",
+        "name": "AnimeSailProvider"
+    },
+    {
+        "iconUrl": "https://v1.samehadaku.how/wp-content/uploads/2020/04/cropped-download-1-192x192.jpg",
+        "apiVersion": 1,
+        "repositoryUrl": "https://github.com/arranoust/MiraiExt",
+        "fileSize": 16294,
+        "status": 1,
+        "language": "id",
+        "authors": [
+            "arranoust"
+        ],
+        "tvTypes": [
+            "AnimeMovie",
+            "Anime",
+            "OVA"
+        ],
+        "version": 1,
+        "internalName": "SamehadakuProvider",
+        "description": "Samehadaku adalah situs nonton anime sub Indo terbaru dengan kualitas video HD terlengkap, streaming anime online bahasa Indonesia gratis.",
+        "url": "https://raw.githubusercontent.com/arranoust/MiraiExt/builds/SamehadakuProvider.cs3",
+        "name": "SamehadakuProvider"
+    }
+]
