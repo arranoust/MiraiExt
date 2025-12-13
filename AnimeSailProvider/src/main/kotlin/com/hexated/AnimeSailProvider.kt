@@ -42,18 +42,22 @@ class AnimeSail : MainAPI() {
         }
     }
 
-    private suspend fun request(url: String, ref: String? = null): NiceResponse {
-        return app.get(
-            url,
-            headers =
-                mapOf(
-                    "Accept" to
-                            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8"
-                ),
-            cookies = mapOf("_as_ipin_ct" to "ID"),
-            referer = ref
-        )
-    }
+private suspend fun request(url: String, ref: String? = null): NiceResponse {
+    return app.get(
+        url,
+        headers = mapOf(
+            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "User-Agent" to
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        cookies = mapOf("_as_ipin_ct" to "ID"),
+        referer = ref,
+        timeout = 20_000
+    )
+}
+
 
     override val mainPage =
         mainPageOf(
