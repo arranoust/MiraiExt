@@ -1,12 +1,12 @@
 // use an integer for version numbers
-version = 1
+version = 2
 
 
 cloudstream {
     language = "id"
     // All of these properties are optional, you can safely remove them
 
-    // description = "Lorem Ipsum"
+     description = "AnimeSail – Streaming Download Anime Subtitle Indonesia"
      authors = listOf("Hexated", "arranoust")
 
     /**
