@@ -6,31 +6,34 @@ import com.lagradost.cloudstream3.LoadResponse.Companion.addMalId
 import com.lagradost.cloudstream3.mvvm.safeApiCall
 import com.lagradost.cloudstream3.utils.*
 import com.lagradost.nicehttp.NiceResponse
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
-import com.lagradost.cloudstream3.SubtitleFile
-import com.lagradost.cloudstream3.app
 import kotlin.text.Regex
 
 class AnimeSail : MainAPI() {
+
     override var mainUrl = "https://154.26.137.28"
     override var name = "AnimeSail"
     override val hasMainPage = true
     override var lang = "id"
     override val hasDownloadSupport = true
 
-    override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
+    override val supportedTypes = setOf(
+        TvType.Anime,
+        TvType.AnimeMovie,
+        TvType.OVA
+    )
 
     companion object {
         fun getType(t: String): TvType {
-            return if (t.contains("OVA", true) || t.contains("Special")) TvType.OVA
-            else if (t.contains("Movie", true)) TvType.AnimeMovie else TvType.Anime
+            return when {
+                t.contains("OVA", true) || t.contains("Special", true) -> TvType.OVA
+                t.contains("Movie", true) -> TvType.AnimeMovie
+                else -> TvType.Anime
+            }
         }
 
         fun getStatus(t: String): ShowStatus {
@@ -42,7 +45,7 @@ class AnimeSail : MainAPI() {
         }
     }
 
-private suspend fun request(url: String, ref: String? = null): NiceResponse {
+    private suspend fun request(url: String, ref: String? = null): NiceResponse {
     return app.get(
         url,
         headers = mapOf(
@@ -57,15 +60,13 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
         timeout = 20_000
     )
 }
-
-
-    override val mainPage =
-        mainPageOf(
-            "$mainUrl/page/" to "Episode Terbaru",
-            "$mainUrl/rilisan-anime-terbaru/page/" to "Anime Terbaru",
-            "$mainUrl/rilisan-donghua-terbaru/page/" to "Donghua Terbaru",
-            "$mainUrl/movie-terbaru/page/" to "Movie Terbaru",
-        )
+    
+    override val mainPage = mainPageOf(
+        "$mainUrl/page/" to "Episode Terbaru",
+        "$mainUrl/rilisan-anime-terbaru/page/" to "Anime Terbaru",
+        "$mainUrl/rilisan-donghua-terbaru/page/" to "Donghua Terbaru",
+        "$mainUrl/movie-terbaru/page/" to "Movie Terbaru",
+    )
 
     override suspend fun getMainPage(page: Int, request: MainPageRequest): HomePageResponse {
         val document = request(request.data + page).document
@@ -74,39 +75,34 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
     }
 
     private fun getProperAnimeLink(uri: String): String {
-        return if (uri.contains("/anime/")) {
-            uri
-        } else {
-            var title = uri.substringAfter("$mainUrl/")
-            title =
-                when {
-                    (title.contains("-episode")) && !(title.contains("-movie")) ->
-                        title.substringBefore("-episode")
+        if (uri.contains("/anime/")) return uri
 
-                    (title.contains("-movie")) -> title.substringBefore("-movie")
-                    else -> title
-                }
-
-            "$mainUrl/anime/$title"
+        var title = uri.substringAfter("$mainUrl/")
+        title = when {
+            title.contains("-episode") -> title.substringBefore("-episode")
+            title.contains("-movie") -> title.substringBefore("-movie")
+            else -> title
         }
+
+        return "$mainUrl/anime/$title"
     }
 
     private fun Element.toSearchResult(): AnimeSearchResponse {
-        val href = getProperAnimeLink(fixUrlNull(this.selectFirst("a")?.attr("href")).toString())
+        val href = getProperAnimeLink(fixUrl(this.selectFirst("a")?.attr("href") ?: ""))
         val title = this.select(".tt > h2")
             .text()
-            .replace("Subtitle Indonesia", "", ignoreCase = true) 
-            .replace(Regex("Episode\\s?\\d+", RegexOption.IGNORE_CASE), "") 
+            .replace("Subtitle Indonesia", "", true)
+            .replace(Regex("Episode\\s?\\d+", RegexOption.IGNORE_CASE), "")
             .trim()
         val posterUrl = fixUrl(this.selectFirst("div.limit img")?.attr("src") ?: "")
+
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
         }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
-        val link = "$mainUrl/?s=$query"
-        val document = request(link).document
+        val document = request("$mainUrl/?s=$query").document
         return document.select("div.listupd article").map { it.toSearchResult() }
     }
 
@@ -115,34 +111,36 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
 
         val title = document.selectFirst("h1.entry-title")
             ?.text()
-            .toString()
-            .replace(Regex("\\s*Subtitle Indonesia\\s*", RegexOption.IGNORE_CASE), "")
-            .trim()
+            ?.replace("Subtitle Indonesia", "", true)
+            ?.trim()
+            ?: ""
+
         val poster = document.selectFirst("div.entry-content > img")?.attr("src")
-        val type = getType(document.select("tbody th:contains(Tipe)").next().text().lowercase())
-        val year = document.select("tbody th:contains(Dirilis)").next().text().trim().toIntOrNull()
-        val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
+        val type =
+            getType(document.select("tbody th:contains(Tipe)").next().text())
+        val year =
+            document.select("tbody th:contains(Dirilis)").next().text().toIntOrNull()
+
+        val tracker =
+            APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
 
         val episodes =
-            document.select("ul.daftar > li") 
-                .mapNotNull { episodeElement -> 
-                    val anchor = episodeElement.selectFirst("a") ?: return@mapNotNull null
-                    val episodeLink = fixUrl(anchor.attr("href"))
-                    val episodeName = anchor.text()
-                        .replace("Subtitle Indonesia", "", ignoreCase = true)
-                        .trim()
+            document.select("ul.daftar > li")
+                .mapNotNull { li ->
+                    val anchor = li.selectFirst("a") ?: return@mapNotNull null
+                    val link = fixUrl(anchor.attr("href"))
+                    val text = anchor.text()
 
                     val episodeNumber =
-                        // Renamed from 'episode' to avoid confusion with property name
-                        Regex("Episode\\s?(\\d+)")
-                            .find(episodeName)
+                        Regex("Episode\\s?(\\d+)", RegexOption.IGNORE_CASE)
+                            .find(text)
                             ?.groupValues
-                            ?.getOrNull(1) // IMPORTANT: Group 1 for the number
+                            ?.getOrNull(1)
                             ?.toIntOrNull()
 
-                    newEpisode(episodeLink) { 
-                        this.name = episodeName       
-                        this.episode = episodeNumber  
+                    newEpisode(link) {
+                        this.name = episodeNumber?.let { "Episode $it" } ?: "Episode"
+                        this.episode = episodeNumber
                         this.posterUrl = tracker?.image ?: poster
                     }
                 }
@@ -152,12 +150,13 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
             posterUrl = tracker?.image ?: poster
             backgroundPosterUrl = tracker?.cover
             this.year = year
-            addEpisodes(DubStatus.Subbed, episodes)
+            plot = document.selectFirst("div.entry-content > p")?.text()
             showStatus =
                 getStatus(document.select("tbody th:contains(Status)").next().text().trim())
-            plot = document.selectFirst("div.entry-content > p")?.text()
             this.tags =
                 document.select("tbody th:contains(Genre)").next().select("a").map { it.text() }
+
+            addEpisodes(DubStatus.Subbed, episodes)
             addMalId(tracker?.malId)
             addAniListId(tracker?.aniId?.toIntOrNull())
         }
@@ -172,107 +171,47 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
 
         val document = request(data).document
 
-        // Replace blocking apmap with coroutine-friendly concurrent processing
         coroutineScope {
-            val jobs = document.select(".mobius > .mirror > option").map { element ->
+            document.select(".mobius > .mirror > option").map { option ->
                 async {
                     safeApiCall {
                         val iframe =
                             fixUrl(
-                                Jsoup.parse(base64Decode(element.attr("data-em")))
+                                Jsoup.parse(base64Decode(option.attr("data-em")))
                                     .select("iframe")
                                     .attr("src")
                             )
-                        val quality = getIndexQuality(element.text())
-                        when {
-                            iframe.startsWith("$mainUrl/utils/player/arch/") ||
-                                    iframe.startsWith("$mainUrl/utils/player/race/") ->
-                                request(iframe, ref = data).document.select("source").attr("src")
-                                    .let { link ->
-                                        val source =
-                                            when {
-                                                iframe.contains("/arch/") -> "Arch"
-                                                iframe.contains("/race/") -> "Race"
-                                                else -> this@AnimeSail.name
-                                            }
-                                        callback.invoke(
-                                            ExtractorLink(
-                                                source = source,
-                                                name = source,
-                                                url = link,
-                                                referer = mainUrl,
-                                                quality = quality,
-                                                type = ExtractorLinkType.VIDEO
-                                            )
-                                        )
-                                    }
-                            iframe.startsWith("https://aghanim.xyz/tools/redirect/") -> {
-                                val link =
-                                    "https://rasa-cintaku-semakin-berantai.xyz/v/${
-                                        iframe.substringAfter("id=").substringBefore("&token")
-                                    }"
-                                loadFixedExtractor(link, quality, mainUrl, subtitleCallback, callback)
-                            }
 
-                            iframe.startsWith("$mainUrl/utils/player/framezilla/") ||
-                                    iframe.startsWith("https://uservideo.xyz") -> {
-                                request(iframe, ref = data).document.select("iframe").attr("src").let { link
-                                    ->
-                                    loadFixedExtractor(
-                                        fixUrl(link),
-                                        quality,
-                                        mainUrl,
-                                        subtitleCallback,
-                                        callback
-                                    )
-                                }
-                            }
+                        val quality = getIndexQuality(option.text())
 
-                            else -> {
-                                loadFixedExtractor(iframe, quality, mainUrl, subtitleCallback, callback)
-                            }
+                        loadExtractor(iframe, data, subtitleCallback) { link ->
+                            callback(
+                                ExtractorLink(
+                                    source = name,
+                                    name = name,
+                                    url = link.url,
+                                    referer = link.referer,
+                                    quality = quality,
+                                    type = link.type,
+                                    extractorData = link.extractorData,
+                                    headers = link.headers
+                                )
+                            )
                         }
                     }
                 }
-            }
-            jobs.awaitAll()
+            }.awaitAll()
         }
 
         return true
     }
 
     private fun getIndexQuality(str: String?): Int {
-        return Regex("(\\d{3,4})[pP]").find(str ?: "")?.groupValues?.getOrNull(1)?.toIntOrNull()
+        return Regex("(\\d{3,4})[pP]")
+            .find(str ?: "")
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
             ?: Qualities.Unknown.value
-    }
-
-    private suspend fun loadFixedExtractor(
-        url: String,
-        quality: Int,
-        referer: String? = null,
-        subtitleCallback: (SubtitleFile) -> Unit,
-        callback: (ExtractorLink) -> Unit
-    ) {
-        loadExtractor(url, referer, subtitleCallback) { link ->
-            CoroutineScope(Dispatchers.IO).launch {
-                callback.invoke(
-                    ExtractorLink(
-                        source = name,
-                        name = name,
-                        url = link.url,
-                        referer = link.referer,
-                        quality = quality,
-                        type = link.type,
-                        extractorData = link.extractorData,
-                        headers = link.headers
-                    )
-                )
-            }
-        }
-
-        fun getIndexQuality(str: String): Int {
-            return Regex("(\\d{3,4})[pP]").find(str)?.groupValues?.getOrNull(1)?.toIntOrNull()
-                ?: Qualities.Unknown.value
-        }
     }
 }
