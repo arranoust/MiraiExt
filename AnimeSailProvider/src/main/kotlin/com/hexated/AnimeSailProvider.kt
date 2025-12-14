@@ -50,10 +50,10 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
             "User-Agent" to
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
                 "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                "Chrome/120.0.0.0 Safari/537.36"
+                "Chrome/120.0.0.0 Safari/537.36",
+            "Referer" to (ref ?: mainUrl)
         ),
         cookies = mapOf("_as_ipin_ct" to "ID"),
-        referer = ref,
         timeout = 20_000
     )
 }
@@ -93,45 +93,44 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
 
     private fun Element.toSearchResult(): AnimeSearchResponse {
         val href = getProperAnimeLink(fixUrlNull(this.selectFirst("a")?.attr("href")).toString())
-        val title = this.select(".tt > h2").text().trim()
+        val title = this.select(".tt > h2")
+            .text()
+            .replace("Subtitle Indonesia", "", ignoreCase = true) 
+            .replace(Regex("Episode\\s?\\d+", RegexOption.IGNORE_CASE), "") 
+            .trim()
         val posterUrl = fixUrl(this.selectFirst("div.limit img")?.attr("src") ?: "")
-        val epNum =
-            this.selectFirst(".tt > h2")?.text()?.let {
-                Regex("Episode\\s?(\\d+)").find(it)?.groupValues?.getOrNull(1)?.toIntOrNull()
-            }
         return newAnimeSearchResponse(title, href, TvType.Anime) {
             this.posterUrl = posterUrl
-            addSub(epNum)
         }
     }
 
     override suspend fun search(query: String): List<SearchResponse> {
         val link = "$mainUrl/?s=$query"
         val document = request(link).document
-
         return document.select("div.listupd article").map { it.toSearchResult() }
     }
 
     override suspend fun load(url: String): LoadResponse {
         val document = request(url).document
 
-        val title =
-            document.selectFirst("h1.entry-title")
-                ?.text()
-                .toString()
-                .replace("Subtitle Indonesia", "")
-                .trim()
+        val title = document.selectFirst("h1.entry-title")
+            ?.text()
+            .toString()
+            .replace(Regex("\\s*Subtitle Indonesia\\s*", RegexOption.IGNORE_CASE), "")
+            .trim()
         val poster = document.selectFirst("div.entry-content > img")?.attr("src")
         val type = getType(document.select("tbody th:contains(Tipe)").next().text().lowercase())
         val year = document.select("tbody th:contains(Dirilis)").next().text().trim().toIntOrNull()
+        val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
 
-        // --- Corrected Episode Mapping ---
         val episodes =
-            document.select("ul.daftar > li") // Assuming this is your episode list selector
-                .mapNotNull { episodeElement -> // Use mapNotNull to safely skip if data is missing
+            document.select("ul.daftar > li") 
+                .mapNotNull { episodeElement -> 
                     val anchor = episodeElement.selectFirst("a") ?: return@mapNotNull null
                     val episodeLink = fixUrl(anchor.attr("href"))
                     val episodeName = anchor.text()
+                        .replace("Subtitle Indonesia", "", ignoreCase = true)
+                        .trim()
 
                     val episodeNumber =
                         // Renamed from 'episode' to avoid confusion with property name
@@ -141,15 +140,13 @@ private suspend fun request(url: String, ref: String? = null): NiceResponse {
                             ?.getOrNull(1) // IMPORTANT: Group 1 for the number
                             ?.toIntOrNull()
 
-                    newEpisode(episodeLink) { // 'episodeLink' is the 'data' argument
-                        this.name = episodeName       // Set the 'name' property
-                        this.episode = episodeNumber  // Set the 'episode' property (the number)
+                    newEpisode(episodeLink) { 
+                        this.name = episodeName       
+                        this.episode = episodeNumber  
+                        this.posterUrl = tracker?.image ?: poster
                     }
                 }
                 .reversed()
-        // --- End Corrected Episode Mapping ---
-
-        val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
 
         return newAnimeLoadResponse(title, url, type) {
             posterUrl = tracker?.image ?: poster
