@@ -6,6 +6,7 @@ Indonesian Repository for CloudStream.
 | Nama Ekstensi | Bahasa     | Status |
 |---------------|------------|--------|
 | AnimeSail     | Indonesia  | ✅ Aktif |
+| Samehadaku    | Indonesia  | ✅ Aktif |
 
 ---
 
