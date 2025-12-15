@@ -15,6 +15,7 @@ import kotlin.text.Regex
 
 class AnimeSail : MainAPI() {
 
+    // Basic info
     override var mainUrl = "https://154.26.137.28"
     override var name = "AnimeSail"
     override val hasMainPage = true
@@ -27,6 +28,7 @@ class AnimeSail : MainAPI() {
         TvType.OVA
     )
 
+    // Companion object: type/status helpers
     companion object {
         fun getType(t: String): TvType {
             return when {
@@ -45,22 +47,24 @@ class AnimeSail : MainAPI() {
         }
     }
 
+    // HTTP request helper
     private suspend fun request(url: String, ref: String? = null): NiceResponse {
-    return app.get(
-        url,
-        headers = mapOf(
-            "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "User-Agent" to
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-                "AppleWebKit/537.36 (KHTML, like Gecko) " +
-                "Chrome/120.0.0.0 Safari/537.36",
-            "Referer" to (ref ?: mainUrl)
-        ),
-        cookies = mapOf("_as_ipin_ct" to "ID"),
-        timeout = 20_000
-    )
-}
-    
+        return app.get(
+            url,
+            headers = mapOf(
+                "Accept" to "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "User-Agent" to
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+                        "AppleWebKit/537.36 (KHTML, like Gecko) " +
+                        "Chrome/120.0.0.0 Safari/537.36",
+                "Referer" to (ref ?: mainUrl)
+            ),
+            cookies = mapOf("_as_ipin_ct" to "ID"),
+            timeout = 20_000
+        )
+    }
+
+    // ================= Main Page =================
     override val mainPage = mainPageOf(
         "$mainUrl/page/" to "Episode Terbaru",
         "$mainUrl/rilisan-anime-terbaru/page/" to "Anime Terbaru",
@@ -74,6 +78,7 @@ class AnimeSail : MainAPI() {
         return newHomePageResponse(request.name, home)
     }
 
+    // ================= Helpers =================
     private fun getProperAnimeLink(uri: String): String {
         if (uri.contains("/anime/")) return uri
 
@@ -101,11 +106,13 @@ class AnimeSail : MainAPI() {
         }
     }
 
+    // ================= Search =================
     override suspend fun search(query: String): List<SearchResponse> {
         val document = request("$mainUrl/?s=$query").document
         return document.select("div.listupd article").map { it.toSearchResult() }
     }
 
+    // ================= Load Anime =================
     override suspend fun load(url: String): LoadResponse {
         val document = request(url).document
 
@@ -116,45 +123,38 @@ class AnimeSail : MainAPI() {
             ?: ""
 
         val poster = document.selectFirst("div.entry-content > img")?.attr("src")
-        val type =
-            getType(document.select("tbody th:contains(Tipe)").next().text())
-        val year =
-            document.select("tbody th:contains(Dirilis)").next().text().toIntOrNull()
+        val type = getType(document.select("tbody th:contains(Tipe)").next().text())
+        val year = document.select("tbody th:contains(Dirilis)").next().text().toIntOrNull()
 
-        val tracker =
-            APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
+        val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
 
-        val episodes =
-            document.select("ul.daftar > li")
-                .mapNotNull { li ->
-                    val anchor = li.selectFirst("a") ?: return@mapNotNull null
-                    val link = fixUrl(anchor.attr("href"))
-                    val text = anchor.text()
+        val episodes = document.select("ul.daftar > li")
+            .mapNotNull { li ->
+                val anchor = li.selectFirst("a") ?: return@mapNotNull null
+                val link = fixUrl(anchor.attr("href"))
+                val text = anchor.text()
 
-                    val episodeNumber =
-                        Regex("Episode\\s?(\\d+)", RegexOption.IGNORE_CASE)
-                            .find(text)
-                            ?.groupValues
-                            ?.getOrNull(1)
-                            ?.toIntOrNull()
+                val episodeNumber = Regex("Episode\\s?(\\d+)", RegexOption.IGNORE_CASE)
+                    .find(text)
+                    ?.groupValues
+                    ?.getOrNull(1)
+                    ?.toIntOrNull()
 
-                    newEpisode(link) {
-                        this.name = episodeNumber?.let { "Episode $it" } ?: "Episode"
-                        this.episode = episodeNumber
-                        this.posterUrl = tracker?.image ?: poster
-                    }
+                newEpisode(link) {
+                    this.name = episodeNumber?.let { "Episode $it" } ?: "Episode"
+                    this.episode = episodeNumber
+                    this.posterUrl = tracker?.image ?: poster
                 }
-                .reversed()
+            }
+            .reversed()
 
         return newAnimeLoadResponse(title, url, type) {
             posterUrl = tracker?.image ?: poster
             backgroundPosterUrl = tracker?.cover
             this.year = year
             plot = document.selectFirst("div.entry-content > p")?.text()
-            showStatus =
-                getStatus(document.select("tbody th:contains(Status)").next().text().trim())
-            this.tags =
-                document.select("tbody th:contains(Genre)").next().select("a").map { it.text() }
+            showStatus = getStatus(document.select("tbody th:contains(Status)").next().text().trim())
+            this.tags = document.select("tbody th:contains(Genre)").next().select("a").map { it.text() }
 
             addEpisodes(DubStatus.Subbed, episodes)
             addMalId(tracker?.malId)
@@ -162,6 +162,7 @@ class AnimeSail : MainAPI() {
         }
     }
 
+    // ================= Load Extractor Links =================
     override suspend fun loadLinks(
         data: String,
         isCasting: Boolean,
@@ -171,41 +172,46 @@ class AnimeSail : MainAPI() {
 
         val document = request(data).document
 
-        coroutineScope {
-            document.select(".mobius > .mirror > option").map { option ->
-                async {
-                    safeApiCall {
-                        val iframe =
-                            fixUrl(
-                                Jsoup.parse(base64Decode(option.attr("data-em")))
-                                    .select("iframe")
-                                    .attr("src")
-                            )
+        for (option in document.select(".mobius > .mirror > option")) {
+            try {
+                val iframe = fixUrl(
+                    Jsoup.parse(base64Decode(option.attr("data-em")))
+                        .select("iframe")
+                        .attr("src")
+                )
 
-                        val quality = getIndexQuality(option.text())
+                val quality = getIndexQuality(option.text())
 
-                        loadExtractor(iframe, data, subtitleCallback) { link ->
-                            callback(
-                                ExtractorLink(
-                                    source = name,
-                                    name = name,
-                                    url = link.url,
-                                    referer = link.referer,
-                                    quality = quality,
-                                    type = link.type,
-                                    extractorData = link.extractorData,
-                                    headers = link.headers
-                                )
-                            )
-                        }
+                loadExtractor(iframe, data, subtitleCallback) { link ->
+                    kotlinx.coroutines.runBlocking {
+                        callback(
+                            newExtractorLink(
+                                source = name,
+                                name = name,
+                                url = link.url,
+                                type = link.type
+                            ) {
+                                this.referer = link.referer
+                                this.quality = quality
+                                if (link.headers.isNotEmpty()) {
+                                    this.headers = link.headers
+                                }
+                                if (link.extractorData != null) {
+                                    this.extractorData = link.extractorData
+                                }
+                            }
+                        )
                     }
                 }
-            }.awaitAll()
+            } catch (_: Throwable) {
+                // Ignore errors per item
+            }
         }
 
         return true
     }
 
+    // ================= Quality Helper =================
     private fun getIndexQuality(str: String?): Int {
         return Regex("(\\d{3,4})[pP]")
             .find(str ?: "")
