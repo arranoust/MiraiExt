@@ -9,6 +9,7 @@
 | Nama Ekstensi | Bahasa     | Status |
 |---------------|------------|--------|
 | Animasu       | Indonesia  | ✅ Aktif |
+| Kuronime      | Indonesia  | ✅ Aktif |
 | OtakuDesu     | Indonesia  | ✅ Aktif |
 | Samehadaku    | Indonesia  | ✅ Aktif |
 
