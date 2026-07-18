@@ -2,7 +2,10 @@
 **A repository of CloudStream extensions focused on Indonesian subtitled content from local streaming sites.**
 
 [![Commits](https://img.shields.io/github/commit-activity/m/arranoust/MiraiExt-CloudStream?style=for-the-badge&logo=github)](https://github.com/arranoust/MiraiExt-CloudStream/commits/master)
-[![Telegram](https://img.shields.io/badge/Telegram-Channel-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/arranschannel)
+
+## 📌 Community
+
+[![Telegram](https://img.shields.io/badge/Telegram-Group-2CA5E0?style=for-the-badge&logo=telegram&groupColor=white)](https://t.me/arransdiscussion)
 
 ## 📝 Daftar Ekstensi
 
