@@ -5,7 +5,7 @@
 
 ## 📌 Community
 
-[![Telegram](https://img.shields.io/badge/Telegram-Group-2CA5E0?style=for-the-badge&logo=telegram&groupColor=white)](https://t.me/arransdiscussion)
+[![Telegram](https://img.shields.io/badge/Telegram-Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/arransdiscussion)
 
 ## 📝 Daftar Ekstensi
 
