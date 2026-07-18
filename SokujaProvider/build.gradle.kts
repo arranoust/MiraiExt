@@ -1,4 +1,4 @@
-version = 1
+version = 2
 
 cloudstream {
     language    = "id"
@@ -6,5 +6,5 @@ cloudstream {
     authors     = listOf("arranoust")
     status      = 1
     tvTypes     = listOf("Anime")
-    iconUrl     = "https://x5.sokuja.uk/favicon.png"
+    iconUrl     = "https://x6.sokuja.uk/favicon.png"
 }
