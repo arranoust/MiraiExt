@@ -3,9 +3,9 @@
 
 [![Commits](https://img.shields.io/github/commit-activity/m/arranoust/MiraiExt-CloudStream?style=for-the-badge&logo=github)](https://github.com/arranoust/MiraiExt-CloudStream/commits/master)
 
-## 📌 Community
+## 📌 Komunitas
 
-[![Telegram](https://img.shields.io/badge/Telegram-Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/arransdiscussion)
+[![Telegram](https://img.shields.io/badge/Telegram-Group-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/arranschannel)
 
 ## 📝 Daftar Ekstensi
 
