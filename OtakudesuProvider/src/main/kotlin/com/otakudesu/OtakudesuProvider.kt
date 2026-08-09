@@ -26,7 +26,7 @@ class OtakudesuProvider : MainAPI() {
 
         private val mapper          = ObjectMapper()
         private val episodeNumRegex = Regex("""Episode\s?(\d+)""", RegexOption.IGNORE_CASE)
-        private val yearRegex       = Regex("""\d{4}""")
+        private val yearRegex       = Regex("""\b(19|20)\d{2}\b""")
 
         fun getType(t: String): TvType = when {
             t.contains("OVA", true) || t.contains("Special", true) -> TvType.OVA
@@ -57,7 +57,7 @@ class OtakudesuProvider : MainAPI() {
 
     private fun Element.toSearchResult(): AnimeSearchResponse? {
         val title     = selectFirst("h2.jdlflm")?.text()?.trim() ?: return null
-        val href      = selectFirst("a")!!.attr("href")
+        val href      = selectFirst("a")?.attr("href") ?: return null
         val posterUrl = selectFirst("div.thumbz > img")?.attr("src")
         val epNum     = selectFirst("div.epz")?.ownText()
             ?.replace(Regex("\\D"), "")?.trim()?.toIntOrNull()
@@ -69,13 +69,14 @@ class OtakudesuProvider : MainAPI() {
 
     // ================== Search ==================
 
+    // fix #5: null-safe search results
     override suspend fun search(query: String): List<SearchResponse> {
         return app.get("$mainUrl/?s=$query&post_type=anime").document
             .select("ul.chivsrc > li")
-            .map {
-                val title     = it.selectFirst("h2 > a")!!.ownText().trim()
-                val href      = it.selectFirst("h2 > a")!!.attr("href")
-                val posterUrl = it.selectFirst("img")!!.attr("src")
+            .mapNotNull {
+                val title     = it.selectFirst("h2 > a")?.ownText()?.trim() ?: return@mapNotNull null
+                val href      = it.selectFirst("h2 > a")?.attr("href") ?: return@mapNotNull null
+                val posterUrl = it.selectFirst("img")?.attr("src")
                 newAnimeSearchResponse(title, href, TvType.Anime) { this.posterUrl = posterUrl }
             }
     }
@@ -98,7 +99,7 @@ class OtakudesuProvider : MainAPI() {
             ?.ownText()?.replace(":", "")?.trim() ?: ""
         val year      = yearRegex.find(
             doc.select("div.infozingle > p:nth-child(9) > span").text()
-        )?.value?.toIntOrNull()
+        )?.groupValues?.get(1)?.toIntOrNull()
         val trailer   = doc.selectFirst("div.trailer-anime iframe, #trailer iframe")?.attr("src")
 
         val tracker = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
@@ -108,10 +109,11 @@ class OtakudesuProvider : MainAPI() {
         val backgroundPoster = meta?.data?.images?.find { it.coverType == "Fanart" }?.url
             ?: tracker?.cover
 
-        val episodes = doc.select("div.episodelist")[1].select("ul > li").amap { el ->
+        val episodeListEl = doc.select("div.episodelist").getOrNull(1)
+        val episodes = episodeListEl?.select("ul > li")?.amap { el ->
             val epName = el.selectFirst("a")?.text() ?: return@amap null
             var epNum  = episodeNumRegex.find(epName)?.groupValues?.getOrNull(1)?.toIntOrNull()
-            val link   = fixUrl(el.selectFirst("a")!!.attr("href"))
+            val link   = fixUrl(el.selectFirst("a")?.attr("href") ?: return@amap null)
 
             if (type == TvType.AnimeMovie && epNum == null) epNum = 1
             val aniEp = epNum?.let { meta?.data?.episodes?.get(it.toString()) }
@@ -129,11 +131,11 @@ class OtakudesuProvider : MainAPI() {
                 this.runTime     = aniEp?.runtime
                 this.addDate(aniEp?.airDateUtc)
             }
-        }.filterNotNull().reversed()
+        }?.filterNotNull()?.reversed() ?: emptyList()
 
-        val recommendations = doc.select("div.isi-recommend-anime-series > div.isi-konten").map {
-            val recName   = it.selectFirst("span.judul-anime > a")!!.text()
-            val recHref   = it.selectFirst("a")!!.attr("href")
+        val recommendations = doc.select("div.isi-recommend-anime-series > div.isi-konten").mapNotNull {
+            val recName   = it.selectFirst("span.judul-anime > a")?.text() ?: return@mapNotNull null
+            val recHref   = it.selectFirst("a")?.attr("href") ?: return@mapNotNull null
             val recPoster = it.selectFirst("a > img")?.attr("src")
             newAnimeSearchResponse(recName, recHref, TvType.Anime) { this.posterUrl = recPoster }
         }
@@ -147,7 +149,7 @@ class OtakudesuProvider : MainAPI() {
             this.japName             = meta?.data?.titles?.get("ja") ?: meta?.data?.titles?.get("x-jat")
             this.posterUrl           = tracker?.image ?: poster
             this.backgroundPosterUrl = backgroundPoster
-            try { this.logoUrl = logoUrl } catch (_: Throwable) {}
+            runCatching { this.logoUrl = logoUrl }
             this.year                = year
             addEpisodes(DubStatus.Subbed, episodes)
             this.showStatus          = getStatus(statusStr)
@@ -157,7 +159,7 @@ class OtakudesuProvider : MainAPI() {
             addTrailer(trailer)
             addMalId(tracker?.malId)
             addAniListId(tracker?.aniId?.toIntOrNull())
-            try { addKitsuId(meta?.kitsuId) } catch (_: Throwable) {}
+            runCatching { addKitsuId(meta?.kitsuId) }
         }
     }
 
@@ -299,13 +301,14 @@ class OtakudesuProvider : MainAPI() {
     private suspend fun fetchAniZipMeta(malId: Int?): AniZipMeta? {
         malId ?: return null
         return runCatching {
-            val json = app.get("https://api.ani.zip/mappings?mal_id=$malId").text
-            val data = mapper.readValue(json, AniZipData::class.java)
-            val tree = mapper.readTree(json)
+            val data = mapper.readValue(
+                app.get("https://api.ani.zip/mappings?mal_id=$malId").text,
+                AniZipData::class.java
+            )
             AniZipMeta(
                 data    = data,
-                tmdbId  = tree?.get("mappings")?.get("themoviedb_id")?.asInt()?.takeIf { it != 0 },
-                kitsuId = tree?.get("mappings")?.get("kitsu_id")?.asText()?.takeIf { it.isNotBlank() }
+                tmdbId  = data.mappings?.themoviedbId?.takeIf { it != 0 },
+                kitsuId = data.mappings?.kitsuId?.takeIf { it.isNotBlank() }
             )
         }.getOrNull()
     }
@@ -319,7 +322,7 @@ class OtakudesuProvider : MainAPI() {
             ).optJSONArray("logos")
         }.getOrNull()?.takeIf { it.length() > 0 } ?: return null
 
-        val lang     = langCode?.trim()?.lowercase()
+        val lang = langCode?.trim()?.lowercase()
         fun path(o: JSONObject)  = o.optString("file_path")
         fun isSvg(o: JSONObject) = path(o).endsWith(".svg", true)
         fun urlOf(o: JSONObject) = "https://image.tmdb.org/t/p/w500${path(o)}"
@@ -333,8 +336,7 @@ class OtakudesuProvider : MainAPI() {
         var svgFallback: JSONObject? = null
         for (i in 0 until logos.length()) {
             val logo = logos.optJSONObject(i) ?: continue
-            if (path(logo).isBlank()) continue
-            if (logo.optString("iso_639_1").trim().lowercase() != lang) continue
+            if (path(logo).isBlank() || logo.optString("iso_639_1").trim().lowercase() != lang) continue
             if (!isSvg(logo)) return urlOf(logo)
             if (svgFallback == null) svgFallback = logo
         }
@@ -361,17 +363,24 @@ class OtakudesuProvider : MainAPI() {
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class AniZipEpisode(
         @JsonProperty("airDateUtc") val airDateUtc: String?,
-        @JsonProperty("runtime")    val runtime: Int?,
-        @JsonProperty("image")      val image: String?,
-        @JsonProperty("title")      val title: Map<String, String>?,
-        @JsonProperty("overview")   val overview: String?,
+        @JsonProperty("runtime")    val runtime:    Int?,
+        @JsonProperty("image")      val image:      String?,
+        @JsonProperty("title")      val title:      Map<String, String>?,
+        @JsonProperty("overview")   val overview:   String?,
+    )
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    data class AniZipMappings(
+        @JsonProperty("themoviedb_id") val themoviedbId: Int?    = null,
+        @JsonProperty("kitsu_id")      val kitsuId:      String? = null
     )
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     data class AniZipData(
-        @JsonProperty("titles")      val titles: Map<String, String>?,
+        @JsonProperty("titles")      val titles:      Map<String, String>?,
         @JsonProperty("description") val description: String?,
-        @JsonProperty("images")      val images: List<AniZipImage>?,
-        @JsonProperty("episodes")    val episodes: Map<String, AniZipEpisode>?,
+        @JsonProperty("images")      val images:      List<AniZipImage>?,
+        @JsonProperty("episodes")    val episodes:    Map<String, AniZipEpisode>?,
+        @JsonProperty("mappings")    val mappings:    AniZipMappings? = null
     )
 }
