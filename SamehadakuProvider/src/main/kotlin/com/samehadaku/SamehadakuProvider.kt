@@ -205,18 +205,10 @@ class SamehadakuProvider : MainAPI() {
         val doc = app.get(data).document
 
         // Downloads
-        doc.select("div#downloadb").amap { block ->
-            val format = block.selectFirst("p > b")?.text()
-                ?.replace(Regex("""(?i)\[.*?\]|\s*mode.*"""), "")
-                ?.trim() ?: ""
-
-            block.select("li").amap { li ->
-                val quality = li.selectFirst("strong")?.text()?.trim() ?: ""
-                val label   = if (format.isNotBlank()) "$format $quality" else quality
-
-                li.select("a[href]").amap { a ->
-                    loadFixedExtractor(fixUrl(a.attr("href")), label, "$mainUrl/", subtitleCallback, callback)
-                }
+        doc.select("div#downloadb li").amap { li ->
+            val quality = li.selectFirst("strong")?.text()?.trim() ?: ""
+            li.select("a[href]").amap { a ->
+                loadFixedExtractor(fixUrl(a.attr("href")), quality, "$mainUrl/", subtitleCallback, callback)
             }
         }
 
