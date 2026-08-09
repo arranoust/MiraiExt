@@ -24,18 +24,19 @@ import org.jsoup.nodes.Element
 import java.net.URI
 
 class KuronimeProvider : MainAPI() {
-    override var mainUrl      = "https://kuronime.sbs"
-    private var animekuUrl    = "https://animeku.org"
-    override var name         = "Kuronime"
+    override var mainUrl        = "https://kuronime.sbs"
+    private var animekuUrl      = "https://animeku.org"
+    override var name           = "Kuronime"
     override val hasQuickSearch = true
-    override val hasMainPage  = true
-    override var lang         = "id"
+    override val hasMainPage    = true
+    override var lang           = "id"
     override val supportedTypes = setOf(TvType.Anime, TvType.AnimeMovie, TvType.OVA)
 
     companion object {
         var context: android.content.Context? = null
         private const val KEY = "3&!Z0M,VIZ;dZW=="
         private val mapper    = ObjectMapper()
+        private val yearRegex = Regex("""\b(19|20)\d{2}\b""")
 
         fun getType(t: String): TvType = when {
             t.contains("OVA", true) || t.contains("Special", true) -> TvType.OVA
@@ -51,9 +52,9 @@ class KuronimeProvider : MainAPI() {
     }
 
     override val mainPage = mainPageOf(
-        "$mainUrl/anime/page/%d/?status=ongoing&order=update"    to "Ongoing Anime",
-        "$mainUrl/anime/page/%d/?status=completed&order=update"  to "Completed Anime",
-        "$mainUrl/anime/page/%d/?type=Movie&order=update"        to "Movies",
+        "$mainUrl/anime/page/%d/?status=ongoing&order=update"   to "Ongoing Anime",
+        "$mainUrl/anime/page/%d/?status=completed&order=update" to "Completed Anime",
+        "$mainUrl/anime/page/%d/?type=Movie&order=update"       to "Movies",
     )
 
     // ================== Homepage ==================
@@ -91,25 +92,27 @@ class KuronimeProvider : MainAPI() {
 
     // ================== Load ==================
 
-    override suspend fun load(url: String): LoadResponse {
-        val doc           = app.get(url).document
-        val currentBase   = getBaseUrl(url)
+    override suspend fun load(url: String): LoadResponse? {
+        val doc         = app.get(url).document
+        val currentBase = getBaseUrl(url)
 
-        val title         = doc.selectFirst(".entry-title")?.text()?.trim() ?: ""
-        val poster        = doc.selectFirst("div.l[itemprop=image] > img, .l > img")?.getImageAttr()
-        val tags          = doc.select(".infodetail > ul > li:nth-child(2) > a").map { it.text() }
-        val typeStr       = doc.selectFirst(".infodetail > ul > li:nth-child(7)")
-                             ?.ownText()?.removePrefix(":")?.trim() ?: "tv"
-        val type          = getType(typeStr)
-        val trailer       = doc.selectFirst("div.tply iframe")?.attr("data-src")
-        val year          = Regex("\\d, (\\d*)").find(
-                             doc.select(".infodetail > ul > li:nth-child(5)").text()
-                           )?.groupValues?.get(1)?.toIntOrNull()
-        val status        = getStatus(
-                             doc.selectFirst(".infodetail > ul > li:nth-child(3)")
-                                ?.ownText()?.replace(Regex("\\W"), "") ?: ""
-                           )
-        val description   = doc.select("span.const > p").text()
+        val title = doc.selectFirst(".entry-title")?.text()?.trim()
+            ?.takeIf { it.isNotBlank() } ?: return null
+
+        val poster      = doc.selectFirst("div.l[itemprop=image] > img, .l > img")?.getImageAttr()
+        val tags        = doc.select(".infodetail > ul > li:nth-child(2) > a").map { it.text() }
+        val typeStr     = doc.selectFirst(".infodetail > ul > li:nth-child(7)")
+                            ?.ownText()?.removePrefix(":")?.trim() ?: "tv"
+        val type        = getType(typeStr)
+        val trailer     = doc.selectFirst("div.tply iframe")?.attr("data-src")
+        val year        = yearRegex.find(
+                            doc.select(".infodetail > ul > li:nth-child(5)").text()
+                          )?.groupValues?.get(1)?.toIntOrNull()
+        val status      = getStatus(
+                            doc.selectFirst(".infodetail > ul > li:nth-child(3)")
+                               ?.ownText()?.replace(Regex("\\W"), "") ?: ""
+                          )
+        val description = doc.select("span.const > p").text()
 
         val tracker  = APIHolder.getTracker(listOf(title), TrackerType.getTypes(type), year, true)
         val meta     = fetchAniZipMeta(tracker?.malId)
@@ -119,7 +122,7 @@ class KuronimeProvider : MainAPI() {
         val episodes = doc.select("div.bixbox.bxcl > ul > li").amap { el ->
             val link   = el.selectFirst("a")?.attr("href") ?: return@amap null
             val epName = el.selectFirst("a")?.text() ?: return@amap null
-            var epNum  = Regex("(\\d+[.,]?\\d*)").find(epName)?.groupValues?.get(0)?.toIntOrNull()
+            var epNum  = Regex("""(\d+[.,]?\d*)""").find(epName)?.groupValues?.get(0)?.toIntOrNull()
             if (type == TvType.AnimeMovie && epNum == null) epNum = 1
 
             val aniEp = epNum?.let { meta?.data?.episodes?.get(it.toString()) }
@@ -148,10 +151,10 @@ class KuronimeProvider : MainAPI() {
             this.posterUrl           = tracker?.image ?: poster
             this.backgroundPosterUrl = bgPoster
             runCatching { this.logoUrl = logoUrl }
-            this.year      = year
+            this.year       = year
             this.showStatus = status
-            this.plot      = finalPlot
-            this.tags      = tags
+            this.plot       = finalPlot
+            this.tags       = tags
             addEpisodes(DubStatus.Subbed, episodes)
             addTrailer(trailer)
             addMalId(tracker?.malId)
@@ -168,11 +171,10 @@ class KuronimeProvider : MainAPI() {
         subtitleCallback: (SubtitleFile) -> Unit,
         callback: (ExtractorLink) -> Unit
     ): Boolean {
-        val req           = app.get(data)
-        val doc           = req.document
-        val currentBase   = getBaseUrl(req.url)
+        val req         = app.get(data)
+        val doc         = req.document
+        val currentBase = getBaseUrl(req.url)
 
-        // animeku stream sources
         val scriptData = doc.select("script").map { it.data() }
             .firstOrNull { it.contains("_0xa100d42aa") }
 
@@ -188,7 +190,7 @@ class KuronimeProvider : MainAPI() {
                 {
                     val decrypt = AesHelper.cryptoAESHandler(
                         base64Decode(servers?.src ?: return@runAllAsync),
-                        KEY.toByteArray(), false, "AES/CBC/NoPadding"
+                        KEY.toByteArray(), false, false
                     )
                     val source = tryParseJson<Sources>(decrypt?.toJsonFormat())?.src?.replace("\\", "")
                     M3u8Helper.generateM3u8(
@@ -199,18 +201,16 @@ class KuronimeProvider : MainAPI() {
                 {
                     val decrypt = AesHelper.cryptoAESHandler(
                         base64Decode(servers?.mirror ?: return@runAllAsync),
-                        KEY.toByteArray(), false, "AES/CBC/NoPadding"
+                        KEY.toByteArray(), false, false
                     )
                     val mirrors = tryParseJson<Mirrors>(decrypt) ?: return@runAllAsync
 
-                    // embed
                     mirrors.embed.forEach { (qualityKey, links) ->
                         links.values.filterNotNull().forEach { url ->
                             loadFixedExtractor(url, qualityKey.removePrefix("v"), "$currentBase/", subtitleCallback, callback)
                         }
                     }
 
-                    // download
                     mirrors.download.forEach { (qualityKey, links) ->
                         links.values.filterNotNull().forEach { url ->
                             loadFixedExtractor(url, qualityKey.removePrefix("v"), "$currentBase/", subtitleCallback, callback)
@@ -293,12 +293,14 @@ class KuronimeProvider : MainAPI() {
     private suspend fun fetchAniZipMeta(malId: Int?): AniZipMeta? {
         malId ?: return null
         return runCatching {
-            val json = app.get("https://api.ani.zip/mappings?mal_id=$malId").text
-            val tree = mapper.readTree(json)
+            val data = mapper.readValue(
+                app.get("https://api.ani.zip/mappings?mal_id=$malId").text,
+                MetaAnimeData::class.java
+            )
             AniZipMeta(
-                data    = mapper.readValue(json, MetaAnimeData::class.java),
-                tmdbId  = tree?.get("mappings")?.get("themoviedb_id")?.asInt()?.takeIf { it != 0 },
-                kitsuId = tree?.get("mappings")?.get("kitsu_id")?.asText()?.takeIf { it.isNotBlank() }
+                data    = data,
+                tmdbId  = data.mappings?.themoviedbId?.takeIf { it != 0 },
+                kitsuId = data.mappings?.kitsuId?.takeIf { it.isNotBlank() }
             )
         }.getOrNull()
     }
@@ -362,6 +364,12 @@ class KuronimeProvider : MainAPI() {
     )
 
     @JsonIgnoreProperties(ignoreUnknown = true)
+    data class MetaMappings(
+        @JsonProperty("themoviedb_id") val themoviedbId: Int?    = null,
+        @JsonProperty("kitsu_id")      val kitsuId:      String? = null
+    )
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
     data class MetaAnimeData(
         @JsonProperty("titles")      val titles:      Map<String, String>?,
         @JsonProperty("description") val description: String?,
@@ -370,16 +378,10 @@ class KuronimeProvider : MainAPI() {
         @JsonProperty("mappings")    val mappings:    MetaMappings? = null
     )
 
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    data class MetaMappings(
-        @JsonProperty("themoviedb_id") val themoviedbId: Int?    = null,
-        @JsonProperty("kitsu_id")      val kitsuId:      String? = null
-    )
-
     data class Mirrors(
-        @JsonProperty("embed")      val embed:     Map<String, Map<String, String?>> = emptyMap(),
-        @JsonProperty("download")   val download:  Map<String, Map<String, String?>> = emptyMap(),
-        @JsonProperty("filelions")  val filelions: String?                           = null,
+        @JsonProperty("embed")     val embed:    Map<String, Map<String, String?>> = emptyMap(),
+        @JsonProperty("download")  val download: Map<String, Map<String, String?>> = emptyMap(),
+        @JsonProperty("filelions") val filelions: String?                          = null,
     )
 
     data class Sources(
@@ -389,13 +391,5 @@ class KuronimeProvider : MainAPI() {
     data class Servers(
         @JsonProperty("src")    val src:    String? = null,
         @JsonProperty("mirror") val mirror: String? = null
-    )
-
-    data class All(
-        @JsonProperty("post_image")  val postImage:  String? = null,
-        @JsonProperty("ID")          val ID:         Int?    = null,
-        @JsonProperty("post_title")  val postTitle:  String? = null,
-        @JsonProperty("post_latest") val postLatest: String? = null,
-        @JsonProperty("post_link")   val postLink:   String? = null
     )
 }
